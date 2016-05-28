@@ -64,6 +64,7 @@ type MapReduce struct {
 	Workers map[string]*WorkerInfo
 
 	// add any additional state here
+	idleChannel chan string
 }
 
 func InitMapReduce(nmap int, nreduce int,
@@ -76,7 +77,7 @@ func InitMapReduce(nmap int, nreduce int,
 	mr.alive = true
 	mr.registerChannel = make(chan string)
 	mr.DoneChannel = make(chan bool)
-
+	mr.idleChannel = make(chan string)
 	// initialize any additional state here
 	return mr
 }
@@ -89,6 +90,7 @@ func MakeMapReduce(nmap int, nreduce int,
 	return mr
 }
 
+//定义MapReduce类的rpc方法
 func (mr *MapReduce) Register(args *RegisterArgs, res *RegisterReply) error {
 	DPrintf("Register: worker %s\n", args.Worker)
 	mr.registerChannel <- args.Worker
@@ -96,6 +98,7 @@ func (mr *MapReduce) Register(args *RegisterArgs, res *RegisterReply) error {
 	return nil
 }
 
+//定义MapReduce类的rpc方法
 func (mr *MapReduce) Shutdown(args *ShutdownArgs, res *ShutdownReply) error {
 	DPrintf("Shutdown: registration server\n")
 	mr.alive = false

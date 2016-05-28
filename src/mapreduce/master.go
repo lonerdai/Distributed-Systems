@@ -30,5 +30,85 @@ func (mr *MapReduce) KillWorkers() *list.List {
 
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
+
+	//slice is different array, array's length is fixed, to be investigate
+	//var mapChan, reduceChan = make([]chan bool, mr.nMap), make([]chan bool, mr.nReduce)
+	var mapChan, reduceChan = make(chan int, mr.nMap), make(chan int, mr.nReduce)
+	//定义具有nMap个缓存的通道mapChan以及有mReduce个缓存的通道reduceChan
+
+	//define here, instead of outside RunMaster() could read mr.XX directly
+	var send_map = func(worker string, ind int) bool{
+		var jobArgs DoJobArgs
+		var reply DoJobReply
+		jobArgs.NumOtherPhase = mr.nReduce
+		jobArgs.Operation = Map
+		jobArgs.File = mr.file
+		jobArgs.JobNumber = ind
+		return call(worker, "Worker.DoJob", jobArgs, &reply)
+	}
+
+	var send_reduce = func(worker string, ind int) bool{
+		var jobArgs DoJobArgs
+		var reply DoJobReply
+		jobArgs.NumOtherPhase = mr.nMap
+		jobArgs.Operation = Reduce
+		jobArgs.File = mr.file
+		jobArgs.JobNumber = ind
+		return call(worker, "Worker.DoJob", jobArgs, &reply)
+	}
+
+	for i := 0; i < mr.nMap; i++ {
+		go func(ind int){
+			for{
+				var worker string
+				var ok bool = false
+				select {
+				case worker = <-mr.idleChannel:
+					ok = send_map(worker, ind)
+				case worker = <-mr.registerChannel:
+					ok = send_map(worker, ind)
+				}
+				if (ok){
+					//the order of this couldn't change, otherwise the last several task get stuck
+					mapChan <- ind
+					mr.idleChannel <- worker
+					return
+				}
+			}
+		}(i)
+	}
+	//生成并调用func(i[0->nMap-1]),一共是nMap个goroutine go线程
+
+	for i := 0; i < mr.nMap; i++{
+		<- mapChan
+	}
+
+	fmt.Println("Map is Done")
+
+	for i := 0; i < mr.nReduce; i++{
+		go func(ind int){
+			for {
+				var worker string
+				var ok = false
+				select {
+				case worker = <- mr.idleChannel:
+					ok = send_reduce(worker, ind)
+				case worker = <- mr.registerChannel:
+					ok = send_reduce(worker, ind)
+				}
+				if ok{
+					reduceChan <- ind
+					mr.idleChannel <- worker
+					return
+				}
+			}
+		}(i)
+	}
+
+	for i := 0; i < mr.nReduce; i++{
+		<- reduceChan
+	}
+
+	fmt.Println("Reduce is Done")
 	return mr.KillWorkers()
 }

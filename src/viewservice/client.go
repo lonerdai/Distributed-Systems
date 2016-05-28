@@ -6,7 +6,7 @@ import "fmt"
 //
 // the viewservice Clerk lives in the client
 // and maintains a little state.
-//
+//客户端保存状态用，客户端的名字和viewserver的名字（host：port）
 type Clerk struct {
 	me     string // client's name (host:port)
 	server string // viewservice's host:port
@@ -69,6 +69,7 @@ func (ck *Clerk) Ping(viewnum uint) (View, error) {
 	return reply.View, nil
 }
 
+//查询当前view
 func (ck *Clerk) Get() (View, bool) {
 	args := &GetArgs{}
 	var reply GetReply

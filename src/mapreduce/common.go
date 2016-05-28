@@ -56,6 +56,7 @@ type RegisterReply struct {
 // please use call() to send all RPCs, in master.go, mapreduce.go,
 // and worker.go.  please don't change this function.
 //
+//实现统一的rpc方法调用
 func call(srv string, rpcname string,
 	args interface{}, reply interface{}) bool {
 	c, errx := rpc.Dial("unix", srv)

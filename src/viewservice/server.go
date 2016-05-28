@@ -16,17 +16,89 @@ type ViewServer struct {
 	rpccount int32 // for testing
 	me       string
 
-
 	// Your declarations here.
+	view        View //viewServer当前的view
+	primaryAck  uint //view number Acked by primary server
+	primaryTick uint //接收到的主机的当前tick
+	backupAck   uint //备份机当前接受到的view bumber
+	backupTick  uint //接收到的备份机的当期tick
+	currentTick uint //ViewServer的当前tick
+}
+
+//当前的view是否被主机接受
+func (vs *ViewServer) Acked() bool {
+	return vs.primaryAck == vs.view.Viewnum
+}
+
+func (vs *ViewServer) uninit() bool {
+	return !vs.hasPrimary() && vs.view.Viewnum == 0
+}
+
+//是否有主机
+func (vs *ViewServer) hasPrimary() bool {
+	return vs.view.Primary != ""
+}
+
+//是否有备份机
+func (vs *ViewServer) hasBackup() bool {
+	return vs.view.Backup != ""
+}
+
+func (vs *ViewServer) IsPrimary(name string) bool {
+	return vs.view.Primary == name
+}
+func (vs *ViewServer) IsBackup(name string) bool {
+	return vs.view.Backup == name
+}
+
+//将备份机作为主机
+func (vs *ViewServer) PromoteBackup() {
+	if !vs.hasBackup() {
+		//		vs.view.Primary = ""
+		return
+	}
+	vs.view.Primary = vs.view.Backup
+	vs.view.Backup = ""
+	vs.view.Viewnum++
+	vs.primaryAck = vs.backupAck
+	vs.primaryTick = vs.backupTick
 }
 
 //
 // server Ping RPC handler.
-//
+//主备服务器周期性的ping  viewservice
 func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
 	// Your code here.
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	switch {
+	//没主机的情况下设置为主机
+	case vs.uninit():
+		vs.view.Primary = args.Me
+		vs.view.Viewnum = 1
+		vs.primaryTick = vs.currentTick
+		vs.primaryAck = 0
+	case vs.IsPrimary(args.Me):
+		//num为0表示当前的主机（primary server）中间Crash了
+		if args.Viewnum == 0 {
+			//备份机设为主机并将重连的主机设为备份机
+			vs.PromoteBackup()
+			vs.view.Backup = args.Me
+		} else {
+			vs.primaryAck = args.Viewnum
+			vs.primaryTick = vs.currentTick
+		}
+	case vs.IsBackup(args.Me):
+		vs.backupTick = vs.currentTick
+	//有主机没有备份机的情况下
+	case !vs.hasBackup() && vs.Acked():
+		vs.view.Backup = args.Me
+		vs.view.Viewnum++
+		vs.backupTick = vs.currentTick
+	}
 
+	reply.View = vs.view
 	return nil
 }
 
@@ -36,10 +108,11 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 
 	// Your code here.
-
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	reply.View = vs.view
 	return nil
 }
-
 
 //
 // tick() is called once per PingInterval; it should notice
@@ -47,8 +120,19 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 // accordingly.
 //
 func (vs *ViewServer) tick() {
-
 	// Your code here.
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	vs.currentTick++
+	//主机失联
+	if vs.currentTick-vs.primaryTick >= DeadPings && vs.Acked() {
+		vs.PromoteBackup()
+	}
+	//备份机失联
+	if vs.hasBackup() && vs.currentTick-vs.backupTick >= DeadPings && vs.Acked() {
+		vs.view.Backup = ""
+		vs.view.Viewnum++
+	}
 }
 
 //
@@ -77,7 +161,11 @@ func StartServer(me string) *ViewServer {
 	vs := new(ViewServer)
 	vs.me = me
 	// Your vs.* initializations here.
-
+	vs.view = View{0, "", ""}
+	vs.primaryAck = 0
+	vs.primaryTick = 0
+	vs.backupTick = 0
+	vs.backupAck = 0
 	// tell net/rpc about our RPC server and handlers.
 	rpcs := rpc.NewServer()
 	rpcs.Register(vs)
