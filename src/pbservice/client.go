@@ -1,14 +1,12 @@
 package pbservice
 
-import (
-	"crypto/rand"
-	"fmt"
-	"log"
-	"math/big"
-	"net/rpc"
-	"time"
-	"viewservice"
-)
+import "viewservice"
+import "net/rpc"
+import "log"
+import "time"
+
+import "crypto/rand"
+import "math/big"
 
 type Clerk struct {
 	vs *viewservice.Clerk
@@ -32,10 +30,10 @@ func MakeClerk(vshost string, me string) *Clerk {
 	ck.me = me
 	view, ok := ck.vs.Get()
 	if !ok {
-		//fatal等于print之后调用os.Exit(1)
-		log.Fatal("client从viewservice中获取view失败")
+		log.Fatal("Client get view from viewservice failed\n")
 	}
 	ck.view = view
+
 	return ck
 }
 
@@ -58,7 +56,6 @@ func MakeClerk(vshost string, me string) *Clerk {
 //
 func call(srv string, rpcname string,
 	args interface{}, reply interface{}) bool {
-	//log.Print(srv + "be called")
 	c, errx := rpc.Dial("unix", srv)
 	if errx != nil {
 		return false
@@ -69,8 +66,8 @@ func call(srv string, rpcname string,
 	if err == nil {
 		return true
 	}
+	//fmt.Printf("call %s : %s failed, %s\n", srv, rpcname, err.Error())
 
-	fmt.Println(err)
 	return false
 }
 
@@ -80,21 +77,21 @@ func call(srv string, rpcname string,
 // Get() must keep trying until it either the
 // primary replies with the value or the primary
 // says the key doesn't exist (has never been Put().
-//主机正在往备份中拷贝，所以要不停地试探，直到得到反馈
+//
 func (ck *Clerk) Get(key string) string {
 
 	// Your code here.
 	args := &GetArgs{key}
 	var reply GetReply
-
 	ok := false
+
 	for !ok {
 		ok = call(ck.view.Primary, "PBServer.Get", args, &reply)
 		if !ok || reply.Err == ErrWrongServer {
 			time.Sleep(viewservice.PingInterval)
-			view, ok1 := ck.vs.Get()
-			if !ok1 {
-				log.Printf("客户端 %s 从viewservice获取view失败", ck.me)
+			view, gok := ck.vs.Get()
+			if !gok {
+				//log.Printf("Client %s get view from viewservice failed\n", ck.me)
 				continue
 			}
 			ck.view = view
@@ -103,7 +100,6 @@ func (ck *Clerk) Get(key string) string {
 	}
 
 	return reply.Value
-
 }
 
 //
@@ -114,14 +110,14 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// Your code here.
 	args := &PutAppendArgs{key, value, nrand(), ck.me, op}
 	var reply PutAppendReply
-	ok := false
-	for !ok {
-		ok = call(ck.vs.Primary(), "PBServer.PutAppend", args, &reply)
+
+	for ok := false; !ok; {
+		ok = call(ck.view.Primary, "PBServer.PutAppend", args, &reply)
 		if !ok || reply.Err == ErrWrongServer {
 			time.Sleep(viewservice.PingInterval)
-			view, ok1 := ck.vs.Get()
-			if !ok1 {
-				log.Printf("客户端 %s 从viewservice获取view失败", ck.me)
+			view, ret := ck.vs.Get()
+			if !ret {
+				log.Printf("Client %s get view from viewservice failed\n", ck.me)
 				continue
 			}
 			ck.view = view

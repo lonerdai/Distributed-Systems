@@ -1,9 +1,6 @@
 package pbservice
 
-import (
-	"net"
-	"strconv"
-)
+import "net"
 import "fmt"
 import "net/rpc"
 import "log"
@@ -14,6 +11,7 @@ import "sync/atomic"
 import "os"
 import "syscall"
 import "math/rand"
+import "strconv"
 
 type PBServer struct {
 	mu         sync.Mutex
@@ -25,8 +23,9 @@ type PBServer struct {
 	// Your declarations here.
 	view viewservice.View
 
-	content        map[string]string
+	data           map[string]string
 	request_number map[string]int
+
 	//使用读写锁，读操作之间不互斥，写操作与读操作或其他写操作互斥
 	rw_mutex sync.RWMutex
 }
@@ -36,19 +35,20 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
 	//只需要使用读锁
 	pb.rw_mutex.RLock()
-	defer pb.rw_mutex.RUnlock()
 	if pb.me == pb.view.Primary {
-		value, ok := pb.content[args.Key]
+		value, ok := pb.data[args.Key]
 		if ok {
-			reply.Value = value
 			reply.Err = OK
+			reply.Value = value
 		} else {
-			reply.Value = ""
 			reply.Err = ErrNoKey
 		}
 	} else {
+		//if the server isn't primary, reject the request
 		reply.Err = ErrWrongServer
 	}
+
+	defer pb.rw_mutex.RUnlock()
 	return nil
 }
 
@@ -90,10 +90,10 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 				}
 			}
 			if backup_ok {
-				if _, exist := pb.content[args.Key]; args.Op == "Append" && exist {
-					pb.content[args.Key] += args.Value
+				if _, exist := pb.data[args.Key]; args.Type == AppendTag && exist {
+					pb.data[args.Key] += args.Value
 				} else {
-					pb.content[args.Key] = args.Value
+					pb.data[args.Key] = args.Value
 				}
 				pb.request_number[request_key] = 1
 				reply.Err = OK
@@ -102,10 +102,10 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 			}
 		} else if pb.me == pb.view.Backup && args.Client == pb.view.Primary {
 			//backup deal with the request transmitted from primary
-			if _, exist := pb.content[args.Key]; args.Op == "Append" && exist {
-				pb.content[args.Key] += args.Value
+			if _, exist := pb.data[args.Key]; args.Type == AppendTag && exist {
+				pb.data[args.Key] += args.Value
 			} else {
-				pb.content[args.Key] = args.Value
+				pb.data[args.Key] = args.Value
 			}
 			pb.request_number[request_key] = 1
 			reply.Err = OK
@@ -120,42 +120,22 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	return nil
 }
 
-//func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
-
-//	// Your code here
-//	pb.rw_mutex.Lock()
-//	defer pb.rw_mutex.Unlock()
-
-//	if pb.me == pb.view.Primary {
-//		if args.Op == "Put" {
-//			pb.content[args.Key] = args.Value //put
-//		} else {
-//			//append
-//			_, ok := pb.content[args.Key]
-//			if ok {
-//				pb.content[args.Key] += args.Value
-//			} else {
-//				pb.content[args.Key] = args.Value
-//			}
-//		}
-//		reply.Err = OK
-//		call(pb.view.Backup, "PBServer.PutAppend", args, &PutAppendReply{})
-//	}
-//	return nil
-//}
-
 //同步备份
+//Synchronize the backup when it first became the backup
 func (pb *PBServer) SynBackup(args *PBSynArgs, reply *PBSynReply) error {
+
+	// Your code here.
 	pb.mu.Lock()
-	defer pb.mu.Unlock()
 	if args.Primary == pb.view.Primary {
 		pb.rw_mutex.Lock()
-		pb.content = args.Content
+		pb.data = args.Data
 		pb.rw_mutex.Unlock()
 		reply.Err = OK
 	} else {
 		reply.Err = ErrWrongServer
 	}
+	defer pb.mu.Unlock()
+
 	return nil
 }
 
@@ -166,23 +146,23 @@ func (pb *PBServer) SynBackup(args *PBSynArgs, reply *PBSynReply) error {
 //   manage transfer of state from primary to new backup.
 //
 func (pb *PBServer) tick() {
+
 	// Your code here.
 	pb.mu.Lock()
-	defer pb.mu.Unlock()
-
 	reply_view, err := pb.vs.Ping(pb.view.Viewnum)
 	if err == nil {
 		//同步备份机，（在保存view中的备份几与返回view中的backup不一致的情况下）
 		if pb.me == reply_view.Primary && reply_view.Backup != "" && reply_view.Backup != pb.view.Backup {
-			args := &PBSynArgs{pb.content, pb.view.Primary}
+			args := &PBSynArgs{pb.data, pb.view.Primary}
 			var reply PBSynReply
 			ok := call(reply_view.Backup, "PBServer.SynBackup", args, &reply)
 			if !ok || reply.Err != OK {
-				log.Fatal("Error:Syn Backup failed\n")
+				log.Fatal("Error : Syn Backup failed\n")
 			}
 		}
 	}
 	pb.view = reply_view
+	defer pb.mu.Unlock()
 }
 
 // tell the server to shut itself down.
@@ -192,7 +172,6 @@ func (pb *PBServer) kill() {
 	pb.l.Close()
 }
 
-// call this to find out if the server is dead.
 func (pb *PBServer) isdead() bool {
 	return atomic.LoadInt32(&pb.dead) != 0
 }
@@ -215,9 +194,10 @@ func StartServer(vshost string, me string) *PBServer {
 	pb.me = me
 	pb.vs = viewservice.MakeClerk(me, vshost)
 	// Your pb.* initializations here.
-	pb.content = make(map[string]string)
+	pb.data = make(map[string]string)
 	pb.request_number = make(map[string]int)
 	pb.view = viewservice.View{0, "", ""}
+
 	rpcs := rpc.NewServer()
 	rpcs.Register(pb)
 

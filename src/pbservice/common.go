@@ -6,6 +6,8 @@ const (
 	ErrWrongServer  = "ErrWrongServer"
 	ErrEmptyKey     = "ErrEmptyKey"
 	ErrDuplicateKey = "ErrDuplicateKey"
+	PutTag          = "Put"
+	AppendTag       = "Append"
 )
 
 type Err string
@@ -17,7 +19,7 @@ type PutAppendArgs struct {
 	// You'll have to add definitions here.
 	SerailNumber int64
 	Client       string
-	Op           string
+	Type         string
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
 }
@@ -38,7 +40,7 @@ type GetReply struct {
 
 // Your RPC definitions here.
 type PBSynArgs struct {
-	Content map[string]string
+	Data    map[string]string
 	Primary string
 }
 
