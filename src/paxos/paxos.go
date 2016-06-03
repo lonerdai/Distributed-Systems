@@ -31,7 +31,6 @@ import "sync/atomic"
 import "fmt"
 import "math/rand"
 
-
 // px.Status() return values, indicating
 // whether an agreement has been decided,
 // or Paxos has not yet reached agreement,
@@ -53,8 +52,50 @@ type Paxos struct {
 	peers      []string
 	me         int // index into peers[]
 
+	// Your data here
+	majority_size int
+	instances     map[int]*InstanceState
+	done_seqs     []int
+	max_seq       int
+	min_seq       int
+}
 
-	// Your data here.
+type InstanceState struct {
+	promised_n int
+	accept_n   int
+	accept_v   interface{}
+	status     Fate
+}
+
+type PrepareArgs struct {
+	Pid         int
+	ProposalNum int
+}
+
+type PrepareReply struct {
+	Promised int
+	Accept_n int
+	Accept_v interface{}
+}
+
+type AcceptArgs struct {
+	Pid         int
+	ProposalNum int
+	value       interface{}
+}
+
+type AcceptReply struct {
+	Reject bool
+}
+
+type DecidedArgs struct {
+	Pid         int
+	ProposalNum int
+	Value       interface{}
+}
+
+type DecidedReply struct {
+	Done bool
 }
 
 //
@@ -93,6 +134,15 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	return false
 }
 
+func (px *Paxos) Prepare(args *PrepareArgs,reply &PrepareReply) {
+	px.mu.Lock()
+	defer px.mu.Unlock()
+	
+}
+
+func (px *Paxos) Proposer(v int) {
+
+}
 
 //
 // the application wants paxos to start agreement on
@@ -103,6 +153,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 //
 func (px *Paxos) Start(seq int, v interface{}) {
 	// Your code here.
+
 }
 
 //
@@ -170,8 +221,6 @@ func (px *Paxos) Status(seq int) (Fate, interface{}) {
 	return Pending, nil
 }
 
-
-
 //
 // tell the peer to shut itself down.
 // for testing.
@@ -213,7 +262,6 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 	px := &Paxos{}
 	px.peers = peers
 	px.me = me
-
 
 	// Your initialization code here.
 
@@ -267,7 +315,6 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 			}
 		}()
 	}
-
 
 	return px
 }
