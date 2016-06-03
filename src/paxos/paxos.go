@@ -73,7 +73,7 @@ type PrepareArgs struct {
 }
 
 type PrepareReply struct {
-	Promised int
+	Promised bool
 	Accept_n int
 	Accept_v interface{}
 }
@@ -134,14 +134,35 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	return false
 }
 
-func (px *Paxos) Prepare(args *PrepareArgs,reply &PrepareReply) {
+func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 	px.mu.Lock()
 	defer px.mu.Unlock()
-	
+	if _, exist := px.instances[args.Pid]; exist {
+		if px.instances[args.Pid].promised_n < args.ProposalNum{
+			px.instances[args.Pid].promised_n = args.ProposalNum
+		}else{
+			//拒绝
+			return nil
+		}
+	} else {
+		px.instances[args.Pid]  = &InstanceState{
+			promised_n:0,
+			accept_n:0;
+			accept_v:nil,
+			status:0,
+		}
+	}
+	px.instances[args.Pid].promised_n = args.ProposalNum
+	reply.Promised = true
+	reply.Accept_n = px.instances[args.Pid].accept_n
+	reply.Accept_v=px.instances[args.Pid].accept_v
+	return nil
 }
 
-func (px *Paxos) Proposer(v int) {
-
+func (px *Paxos) Accept(args AcceptArgs,reply *AcceptReply)error {
+	px.mu.Lock()
+	defer px.mu.Unlock()
+	if 
 }
 
 //
