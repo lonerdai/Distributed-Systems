@@ -147,7 +147,7 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 	} else {
 		px.instances[args.Pid]  = &InstanceState{
 			promised_n:0,
-			accept_n:0;
+			accept_n:0,
 			accept_v:nil,
 			status:0,
 		}

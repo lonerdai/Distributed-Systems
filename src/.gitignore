@@ -6,3 +6,8 @@ mrtmp.*
 pkg/*
 *.a
 .*~
+github.com/*
+golang.org/*
+sourcegraph.com/*
+*.a
+
