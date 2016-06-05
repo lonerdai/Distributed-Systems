@@ -162,7 +162,7 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 func (px *Paxos) Accept(args AcceptArgs,reply *AcceptReply)error {
 	px.mu.Lock()
 	defer px.mu.Unlock()
-	if 
+	return nil
 }
 
 //
