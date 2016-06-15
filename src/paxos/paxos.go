@@ -133,7 +133,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	if err != nil {
 		err1 := err.(*net.OpError)
 		if err1.Err != syscall.ENOENT && err1.Err != syscall.ECONNREFUSED {
-			fmt.Printf("paxos Dial() failed: %v\n", err1)
+			//fmt.Printf("paxos Dial() failed: %v\n", err1)
 		}
 		return false
 	}
@@ -144,7 +144,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 		return true
 	}
 
-	fmt.Println(err)
+	//fmt.Println(err)
 	return false
 }
 
@@ -175,7 +175,7 @@ func (px *Paxos) Prepare(args *PrepareArgs, reply *PrepareReply) error {
 }
 
 //Accept 函数，接受大于等于自己的承诺值
-func (px *Paxos) Accept(args AcceptArgs, reply *AcceptReply) error {
+func (px *Paxos) Accept(args *AcceptArgs, reply *AcceptReply) error {
 	px.mu.Lock()
 	defer px.mu.Unlock()
 	_, exist := px.instances[args.Pid]
